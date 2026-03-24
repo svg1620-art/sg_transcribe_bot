@@ -1,8 +1,5 @@
 [build]
 builder = "nixpacks"
 
-[phases.setup]
-nixPkgs = ["python312", "ffmpeg"]
-
 [deploy]
-startCommand = "/opt/venv/bin/python bot.py"
+startCommand = "python3 bot.py"
