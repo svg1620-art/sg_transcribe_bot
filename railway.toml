@@ -1,2 +1,14 @@
 [build]
 builder = "nixpacks"
+
+[phases.setup]
+nixPkgs = ["python312", "ffmpeg"]
+
+[phases.install]
+cmds = ["python3 -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "python3 bot.py"
