@@ -3,6 +3,7 @@ import logging
 import tempfile
 import subprocess
 import math
+logger.info("Bot script started")
 from pathlib import Path
 
 from telegram import Update
