@@ -3,8 +3,3 @@ builder = "nixpacks"
 
 [phases.setup]
 nixPkgs = ["python312", "ffmpeg"]
-```
-
-И создай заново файл `Procfile` с содержимым:
-```
-worker: python3 bot.py
