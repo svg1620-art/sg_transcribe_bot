@@ -200,6 +200,7 @@ def main() -> None:
     )
     logger.info("Bot started. Polling…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Starting polling...")
 
 
 if __name__ == "__main__":
