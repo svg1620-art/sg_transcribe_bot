@@ -5,4 +5,4 @@ builder = "nixpacks"
 nixPkgs = ["python312", "ffmpeg"]
 
 [deploy]
-startCommand = "python3 bot.py"
+startCommand = "/opt/venv/bin/python bot.py"
