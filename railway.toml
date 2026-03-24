@@ -2,4 +2,4 @@
 builder = "nixpacks"
 
 [phases.setup]
-nixPkgs = ["ffmpeg", "python3"]
+nixPkgs = ["python3", "ffmpeg"]
