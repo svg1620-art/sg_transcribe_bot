@@ -4,7 +4,6 @@ import tempfile
 import subprocess
 import math
 from pathlib import Path
-
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from openai import OpenAI
@@ -51,7 +50,26 @@ def transcribe(path):
             try: os.unlink(c)
             except: pass
 
-async def process(update, tg_file, msg):
+def summarize(transcript):
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Ты помощник для анализа транскрипций. Отвечай на русском языке."},
+            {"role": "user", "content": f"""Проанализируй транскрипцию и дай структурированный анализ:
+
+1. КРАТКОЕ САММЕРИ (3-5 предложений) — о чём разговор
+2. КЛЮЧЕВЫЕ ТЕМЫ — список основных тем
+3. ГЛАВНЫЕ ВЫВОДЫ — самое важное
+4. ACTION ITEMS — договорённости и задачи (если есть)
+
+Транскрипция:
+{transcript}"""}
+        ],
+        max_tokens=1500,
+    )
+    return response.choices[0].message.content.strip()
+
+async def process_audio(update, tg_file, msg):
     suffix = Path(tg_file.file_path).suffix or ".ogg"
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp.close()
@@ -67,30 +85,52 @@ async def process(update, tg_file, msg):
     finally:
         os.unlink(tmp.name)
 
-async def send_as_file(update, msg, transcript):
+async def send_result(update, msg, transcript):
+    await msg.edit_text("🧠 Делаю саммери и анализ…")
+    summary = summarize(transcript)
+
+    result = (
+        "=" * 50 + "\n"
+        "САММЕРИ И АНАЛИЗ\n"
+        "=" * 50 + "\n\n"
+        + summary +
+        "\n\n\n" +
+        "=" * 50 + "\n"
+        "ПОЛНАЯ ТРАНСКРИПЦИЯ\n"
+        "=" * 50 + "\n\n"
+        + transcript
+    )
+
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as tf:
-        tf.write(transcript)
+        tf.write(result)
         tf_path = tf.name
     try:
         await msg.delete()
         await update.message.reply_document(
             document=open(tf_path, "rb"),
             filename="transcription.txt",
-            caption="📝 Расшифровка готова"
+            caption="✅ Готово! Саммери + полная транскрипция внутри."
         )
     finally:
         os.unlink(tf_path)
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html("👋 Привет! Отправь голосовое или аудиофайл (mp3, ogg, wav, m4a…) — расшифрую и пришлю текстовым файлом.\n\n⚡ Большие файлы нарезаются автоматически. Лимит Telegram: <b>50 MB</b>.")
+    await update.message.reply_html(
+        "👋 Привет! Отправь голосовое или аудиофайл (mp3, ogg, wav, m4a…)\n\n"
+        "Пришлю txt-файл с:\n"
+        "🧠 <b>Саммери и анализом</b>\n"
+        "📄 <b>Полной транскрипцией</b>\n\n"
+        "⚡ Большие файлы нарезаются автоматически. Лимит: <b>50 MB</b>."
+    )
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Расшифровываю…")
     try:
         f = await update.message.voice.get_file()
-        transcript = await process(update, f, msg)
-        await send_as_file(update, msg, transcript)
+        transcript = await process_audio(update, f, msg)
+        await send_result(update, msg, transcript)
     except Exception as e:
+        logger.exception("Error in handle_voice")
         await msg.edit_text(f"❌ Ошибка: {e}")
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,18 +147,20 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Скачиваю…")
     try:
         f = await audio.get_file()
-        transcript = await process(update, f, msg)
-        await send_as_file(update, msg, transcript)
+        transcript = await process_audio(update, f, msg)
+        await send_result(update, msg, transcript)
     except Exception as e:
+        logger.exception("Error in handle_audio")
         await msg.edit_text(f"❌ Ошибка: {e}")
 
 async def handle_video_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Расшифровываю кружок…")
     try:
         f = await update.message.video_note.get_file()
-        transcript = await process(update, f, msg)
-        await send_as_file(update, msg, transcript)
+        transcript = await process_audio(update, f, msg)
+        await send_result(update, msg, transcript)
     except Exception as e:
+        logger.exception("Error in handle_video_note")
         await msg.edit_text(f"❌ Ошибка: {e}")
 
 def main():
