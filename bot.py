@@ -11,7 +11,6 @@ from openai import OpenAI
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.info("Bot script started")
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -63,19 +62,34 @@ async def process(update, tg_file, msg):
             await msg.edit_text(f"✂️ Файл {size_mb:.1f} MB — нарезаю на части…")
         text, n = transcribe(tmp.name)
         if n > 1:
-            text = f"[{n} частей]\n\n{text}"
+            text = f"[Расшифровано {n} частей]\n\n{text}"
         return text
     finally:
         os.unlink(tmp.name)
 
+async def send_as_file(update, msg, transcript):
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as tf:
+        tf.write(transcript)
+        tf_path = tf.name
+    try:
+        await msg.delete()
+        await update.message.reply_document(
+            document=open(tf_path, "rb"),
+            filename="transcription.txt",
+            caption="📝 Расшифровка готова"
+        )
+    finally:
+        os.unlink(tf_path)
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html("👋 Привет! Отправь голосовое или аудиофайл (mp3, ogg, wav, m4a…) — расшифрую.\n\n⚡ Большие файлы нарезаются автоматически. Лимит Telegram: <b>50 MB</b>.")
+    await update.message.reply_html("👋 Привет! Отправь голосовое или аудиофайл (mp3, ogg, wav, m4a…) — расшифрую и пришлю текстовым файлом.\n\n⚡ Большие файлы нарезаются автоматически. Лимит Telegram: <b>50 MB</b>.")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Расшифровываю…")
     try:
         f = await update.message.voice.get_file()
-        await msg.edit_text(f"📝 <b>Расшифровка:</b>\n\n{await process(update, f, msg)}", parse_mode="HTML")
+        transcript = await process(update, f, msg)
+        await send_as_file(update, msg, transcript)
     except Exception as e:
         await msg.edit_text(f"❌ Ошибка: {e}")
 
@@ -93,7 +107,8 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Скачиваю…")
     try:
         f = await audio.get_file()
-        await msg.edit_text(f"📝 <b>Расшифровка:</b>\n\n{await process(update, f, msg)}", parse_mode="HTML")
+        transcript = await process(update, f, msg)
+        await send_as_file(update, msg, transcript)
     except Exception as e:
         await msg.edit_text(f"❌ Ошибка: {e}")
 
@@ -101,7 +116,8 @@ async def handle_video_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔄 Расшифровываю кружок…")
     try:
         f = await update.message.video_note.get_file()
-        await msg.edit_text(f"📝 <b>Расшифровка:</b>\n\n{await process(update, f, msg)}", parse_mode="HTML")
+        transcript = await process(update, f, msg)
+        await send_as_file(update, msg, transcript)
     except Exception as e:
         await msg.edit_text(f"❌ Ошибка: {e}")
 
@@ -113,7 +129,11 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.AUDIO, handle_audio))
     app.add_handler(MessageHandler(filters.VIDEO_NOTE, handle_video_note))
-    app.add_handler(MessageHandler(filters.Document.FileExtension("mp3")|filters.Document.FileExtension("ogg")|filters.Document.FileExtension("wav")|filters.Document.FileExtension("m4a")|filters.Document.FileExtension("flac")|filters.Document.FileExtension("mp4")|filters.Document.FileExtension("webm"), handle_audio))
+    app.add_handler(MessageHandler(
+        filters.Document.FileExtension("mp3")|filters.Document.FileExtension("ogg")|
+        filters.Document.FileExtension("wav")|filters.Document.FileExtension("m4a")|
+        filters.Document.FileExtension("flac")|filters.Document.FileExtension("mp4")|
+        filters.Document.FileExtension("webm"), handle_audio))
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
